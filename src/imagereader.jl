@@ -18,8 +18,8 @@ struct ImageReader{F,S<:Tuple,Ax}
     properties::ImageProperties{F}
 end
 
-ImageReader(s::TypeStream, axes::Ax, props::ImageProperties{F}) where {F,Ax} =
-    ImageReader{F,Tuple{map(length,axes)...},Ax}(s, axes, props)
+ImageReader(s::TypeStream, axes::Ax, props::ImageProperties{F}) where {F,Ax} = ImageReader{F,Tuple{map(length,axes)...},Ax}(s, axes, props)
+ImageReader()
 
 # abstractarray interface
 Base.size(reader::ImageReader{F,S}, i::Int) where {F,S} = S.parameters[i]
@@ -34,10 +34,8 @@ Base.axes(reader::ImageReader) = reader.axes
 FileIO.stream(reader::ImageReader) = stream(reader.io)
 
 
-function ImageReader{F,S}(io::IO, axes::Ax, props::ImageProperties{F},
-                            needswap::Bool=false, ownstream::Bool=false) where {F,S,Ax}
+ImageReader{F,S}(io::IO, axes::Ax, props::ImageProperties{F}, needswap::Bool=false, ownstream::Bool=false) where {F,S,Ax}
     ImageReader{F,S,Ax}(io, axes, props, ownstream)
-end
 function ImageReader{F,S}(io::IO, axes::Ax, needswap::Bool, ownstream::Bool=false;
                             kwargs...) where {F,S,Ax}
     ImageReader{F,S,Ax}(io, axes, ImageProperties{F}(; kwargs...), needswap, ownstream)

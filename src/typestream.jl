@@ -9,14 +9,16 @@
     Should specify the file formats encoding.
 
 ```
+#NOTMYENDIAN = ifelse(ENDIAN_BOM == 0x01020304, :BigEndian, :LittleEndian)
+
 testfile = "/tmp/typestream.bin"
+
+s = TypeStream{Int}(open(testfile, "w+"))
 io = open(testfile, "w+")
 A = [1:10...]
 write(io, A)
 close(io)
-NOTMYENDIAN = ifelse(ENDIAN_BOM == 0x01020304, :BigEndian, :LittleEndian)
 s = TypeStream{Int}(open(testfile))
-
 ```
 """
 # IO subtyping gave ambiguity errors
@@ -30,9 +32,9 @@ end
 const LittleEndian = 0x01020304
 const BigEndian = 0x04030201
 
-TypeStream{T}(io::IO, ownstream::Bool=false) where T = TypeStream{T,false}(io, ownstream)
 TypeStream{T}(io::IO, endianness::UInt32=ENDIAN_BOM, ownstream::Bool=false) where T =
     TypeStream{T,ENDIAN_BOM != endianness}(io, ownstream)
+
 TypeStream{T}(f::AbstractString, mode::AbstractString, endianness::Symbol) where T =
     TypeStream{T}(open(f, mode), endianness, true)
 
@@ -66,6 +68,7 @@ Base.reset(s::TypeStream) = reset(stream(s))
 Base.unmark(s::TypeStream) = unmark(stream(s))
 Base.mark(s::TypeStream) = mark(stream(s))
 Base.bytesavailable(s::TypeStream) = bytesavailable(stream(s))
+Base.readbytes!(s::TypeStream) = error("TypeStream cannot be read byte wise")
 
 #Base.countlines(s::TypeStream) = countlines(stream(s))
 #Base.skipchars(predicate, s::TypeStream; linecomment=nothing) = skipchars(predicate, stream(s), linecomment=nothing)
@@ -115,30 +118,19 @@ Base.unsafe_write(s::TypeStream{T,false}, p::Ptr{UInt8}, n::UInt) where T = unsa
     return written
 end
 
-#########
-# Sinks #
-#########
-readto(s::TypeStream{Tr}, ::Type{Ts}) where {Tr<:RawType,Ts<:RawType} = convert(Ts, read(s, Tr))
 
 
-readto(s::TypeStream{Tr}, ::Type{Ts}) where {Tr<:RawType,Ts<:RawType} = convert(Ts, read(s, Tr))
-writeto(s::TypeStream{Tr}, val::Ts) where {Tr,Ts} = write(s, convert(Tr, val))
-
-function readto(s::TypeStream{T}, ::Type{SA}) where {T<:RawType,SA<:StaticArray}
-    elements = Ref{NTuple{length(SA),eltype(SA)}}()
-    unsafe_readto(s, unsafe_convert(Ref{T}, p)::Ptr, length(SA))
-    SA(elements[])
-end
-
-readto!(s::TypeStream, a::A) where {A<:ArrayContainer}= readto!(s, a.data)
-function readto!(s::TypeStream, a::AbstractArray{<:RawType})
-    GC.@preserve a unsafe_readto(s, pointer_from_objref(a), length(a))
-    return a
-end
+##############
+# Conversion #
+##############
+@inline Base.read(s::TypeStream{Tr}, ::Type{Ts}) where {Tr<:RawType,Ts<:SinkType} =
+    convert(Ts, read!(s, Ref{Tr}(0))[]::Tr)::Ts
+@inline Base.write(s::TypeStream{Tr}, val::Ts) where {Tr<:RawType,Ts<:SinkType} =
+    write(s, Ref(convert(Tr, val)))
 
 # Mapped #
 # ------ #
-Base.read!(s::TypeStream{F,T}, sink::AbstractArray) where {F,T} = error("cannot mmap directly to sink")
+#Base.read!(s::TypeStream{F,T}, sink::AbstractArray) where {F,T} = error("cannot mmap directly to sink")
 Base.read(s::TypeStream{F,T}) where {F,T} = read(stream(s), sink{Tuple{size(s)...},eltype(s),ndims(s),length(s)})
 Base.read(s::TypeStream{F,T}, sink::Type{Array{T,N}}) where {F,T,N} = Mmap.mmap(stream(s), Array{T,N}, size(s))
 
